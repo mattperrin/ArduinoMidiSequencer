@@ -11,7 +11,7 @@ class MusicNote {
     byte Velocity;
     bool Play = false;
     bool EndNote = false;
-    bool Playing = false;
+    byte Duration;
 };
 
 class Sequence {
@@ -44,7 +44,7 @@ byte currentMidiNote;
 byte currentOctave;
 byte currentPitch;
 byte currentVelocity;
-byte currentIntervalLength;
+byte currentNoteDuration;
 byte bpmTempo;
 
 unsigned long currentMillis;
@@ -56,6 +56,7 @@ long buttonTimerReset = 0;
 int bpmCount;
 int playheadCount;
 bool dirtySequenceFlag;
+bool dirtyUIFlag;
 int sixteenInterval;
 
 MIDI_CREATE_DEFAULT_INSTANCE();
@@ -65,12 +66,11 @@ void setup() {
   //SET DEFAULT VALUES
   currentPattern = (byte)0;
   currentSequence = (byte)0;
-  currentMidiNote = (byte)6;
   currentOctave = (byte)4;
   currentPitch = (byte)42;
   currentVelocity = (byte)127;
-  currentIntervalLength = (byte)16;
-  bpmTempo = (byte)60;
+  currentNoteDuration = (byte)2;
+  bpmTempo = (byte)140;
   bpmCount = 0;
   playheadCount = 0;
 
@@ -90,13 +90,13 @@ void setup() {
   lcd.home();
   lcd.print("MIDI Sequencer");
   lcd.clear();
-  delay(3000);
+  delay(5000);
 
   SetupButtons();
   SetupArrays();
   buttonTimerReset = 0;
   RedrawSequence();
-
+  RedrawUI();
 }
 
 void SetupButtons()
@@ -125,8 +125,8 @@ void SetupArrays()
         MusicNote note = sequence.MusicNotes[k];
         note.EndNote = false;
         note.Play = false;
-        note.Playing = false;
         note.Velocity = (byte)currentVelocity;
+        note.Duration = (byte)0;
       }
     }
   }
@@ -139,27 +139,32 @@ void SetupArrays()
 void loop() {
   // put your main code here, to run repeatedly:
 
+  //lcd.clear();
+
+  //int note = map(analogRead(0), 0, 1023, 0, 127);
+  //int velocity = map(analogRead(3), 0, 1023, 0, 127);
+
   dirtySequenceFlag = false;
   currentMillis = millis();
   differenceTiming = currentMillis - previousMillis;
   if (differenceTiming >= sixteenInterval)
   {
     PerformMidiCheck();
+
     lcd.home();
 
-    //  CLEAR SIXTEENTH PLAYHEAD POSITION
+    /*
     if (playheadCount == 16)
     {
       lcd.setCursor(17, 2);
       lcd.print(" ");
       playheadCount = 0;
     }
-
-    // DRAW PLAYHEAD
     lcd.setCursor(1 + playheadCount, 2);
     lcd.print(" ");
     lcd.setCursor(2 + playheadCount, 2);
     lcd.print((char)4);
+    */
 
     // RESET BUTTON
     if (buttonTimerReset < -10000) {
@@ -179,6 +184,11 @@ void loop() {
       dirtySequenceFlag = false;
     }
 
+    if (dirtyUIFlag) {
+      RedrawUI();
+      dirtyUIFlag = false;
+    }
+
     //ADVANCE COUNTERS / RESET TIMERS
     bpmCount++;
     playheadCount++;
@@ -187,10 +197,8 @@ void loop() {
 }
 
 
-
 void PerformMidiCheck()
 {
-  //CHECK EVERY BUTTON IN THE SEQUENCE FOR MIDI START / END
   for (int i = 0; i < 16; i++)
   {
     if (PatternsContainer.Patterns[currentPattern].Sequences[i].MusicNotes[playheadCount].EndNote == true) {
@@ -204,19 +212,17 @@ void PerformMidiCheck()
   }
 }
 
-
-void StartMidiNote(int pitch, int velocity)
+void StartMidiNote(byte pitch, byte velocity)
 {
-        lcd.setCursor(0,0);
-      lcd.print("P:" + (String)pitch + " V:" + (String)velocity);
-  MIDI.sendNoteOn(40, 100, 1); // Send a Note
+  //lcd.setCursor(0, 0);
+  //lcd.print("P:" + (String)pitch + " V:" + (String)velocity);
+  MIDI.sendNoteOn((int)pitch, (int)velocity, 1); // Send a Note
 }
 
-void EndMidiNote(int pitch)
+void EndMidiNote(byte pitch)
 {
-  //MIDI.sendNoteOff(pitch, 0, 1);  // Stop the note
+  MIDI.sendNoteOff((int)pitch, 0, 1);  // Stop the note
 }
-
 
 
 
@@ -226,87 +232,40 @@ void EvaluateSequenceButtons()
   {
     bool buttonState = digitalRead(buttonPins[i]);
 
-    // CHECK THAT BUTTON WAS PRESSED
     if (!buttonState)
     {
+
       dirtySequenceFlag = true;
       buttonTimerReset = 300;
-      SetMidiStartPoint(i);
+      //SetMidiStartPoint(i);
       
-      /*
       if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Play == true)
       {
         ClearMidiSequences(i);
       }
-
-      
-      if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Playing == true)
+      else 
       {
         SetMidiStartPoint(i);
         int endPoint = SetMidiEndPoint(i);
-        SetMidiPlayingPoints(i, endPoint);
       }
-      
-      else {
-        SetMidiStartPoint(i);
-        int endPoint = SetMidiEndPoint(i);
-        SetMidiPlayingPoints(i, endPoint);
-      }*/
     }
-    Tester("Z" + String(i));
     digitalWrite(buttonPins[i], HIGH);
   }
 }
 
-// CLEAR MIDI SEQUENCES
-void ClearMidiSequences(int startPoint)
-{
-  int currentPosition = startPoint;
-  bool endPointFound = false;
-  do
-  {
-    if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[currentPosition].EndNote) {
-      endPointFound = true;
-    }
-    PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[currentPosition].Play = false;
-    PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[currentPosition].Playing = false;
-    PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[currentPosition].EndNote = false;
-    currentPosition += 1;
-  } while (!endPointFound);
-}
-
-void EndPreviousSequenceCollision(int position)
-{
-  int previousPosition = position - 1;
-  if (previousPosition < 0) {
-    previousPosition = 15;
-  }
-  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[previousPosition].EndNote = true;
-}
 
 
 // SET MIDI SEQUENCES
 void SetMidiStartPoint(int startPoint)
 {
   PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].Play = true;
-  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].Playing = true;
-  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].EndNote = false;
-}
-
-void SetMidiPlayingPoints(int startPoint, int endPoint)
-{
-  for (int i = startPoint + 1; i != endPoint; i++)
-  {
-    PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Play = false;
-    PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Playing = true;
-    PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].EndNote = false;
-  }
+  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].Duration = currentNoteDuration;
 }
 
 int SetMidiEndPoint(int tempPlayheadCount)
 {
   int endPoint = 0;
-  switch (currentIntervalLength)
+  switch (currentNoteDuration)
   {
     case 16:
       endPoint = tempPlayheadCount + 1;
@@ -333,26 +292,58 @@ int SetMidiEndPoint(int tempPlayheadCount)
     endPoint -= 16;
   }
 
-  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[endPoint].Play = false;
-  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[endPoint].Playing = false;
+  //lcd.setCursor(1, 1);
+  //lcd.print((String)endPoint);
+  
   PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[endPoint].EndNote = true;
   return endPoint;
+}
+
+void ClearMidiSequences(int startPoint)
+{
+  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].Play = false;
+  int endPoint = 0;
+  switch (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].Duration)
+  {
+    case 16:
+      endPoint = startPoint + 1;
+      break;
+
+    case 8:
+      endPoint = startPoint + 2;
+      break;
+
+    case 4:
+      endPoint = startPoint + 4;
+      break;
+
+    case 2:
+      endPoint = startPoint + 8;
+      break;
+
+    case 1:
+      endPoint = startPoint + 16;
+      break;
+  }
+
+  if (endPoint > 16) {
+    endPoint -= 16;
+  }
+  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[startPoint].Duration = 0;
+  PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[endPoint].EndNote = false;    
 }
 
 
 
 
+// LCD DRAWING
 void RedrawSequence()
 {
   for (int i = 0; i < 16; i++) {
     lcd.setCursor(i + 2, 3);
-    if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Play) {
+    if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Play == true) {
       // PRINT BEAT START
       lcd.print((char)1);
-    }
-    else if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].EndNote) {
-      // PRINT BEAT END
-      //lcd.print("X");
     }
     else {
       // PRINT OPEN BEAT
@@ -367,12 +358,54 @@ void RedrawSequence()
   }
 }
 
-
-void Tester(String str)
+void RedrawUI()
 {
-  //lcd.setCursor(1,1);
-  //lcd.print(str);
-  //delay(500);
+  return;
+  lcd.setCursor(1, 0);
+  lcd.print("Pattern:" + (String)currentPattern + "   Seq:" + (String)currentSequence);
+  lcd.setCursor(1, 1);
+  lcd.print("BPM PIT VEL DUR");
+  lcd.setCursor(1, 2);
+  lcd.print((String)bpmTempo);
+
+  lcd.setCursor(5, 2);
+  lcd.print(ConvertPitchToString());
+
+  lcd.setCursor(9, 2);
+  lcd.print((String)currentVelocity);
+
+  lcd.setCursor(13, 2);
+  lcd.print((String)ConvertNoteDurationToString());
 }
+
+String ConvertPitchToString()
+{
+  String midiNotes[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+  int midiNoteIndex = currentPitch % 12;
+  int octave = (int)(currentPitch / 12);
+  String convertedStr = midiNotes[midiNoteIndex] + (String)octave;
+}
+
+String ConvertNoteDurationToString()
+{
+  switch (currentNoteDuration)
+  {
+    case 16:
+      return "16";
+
+    case 8:
+      return "1/8";
+
+    case 4:
+      return "1/4";
+
+    case 2:
+      return "1/2";
+    
+    case 1:
+      return "1/1";    
+  }
+}
+
 
 
