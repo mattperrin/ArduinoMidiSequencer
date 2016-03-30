@@ -89,14 +89,14 @@ void setup() {
 
   lcd.home();
   lcd.print("MIDI Sequencer");
-  lcd.clear();
-  delay(5000);
-
+  
+  delay(3000);
+lcd.clear();
   SetupButtons();
-  SetupArrays();
+ // SetupArrays();
   buttonTimerReset = 0;
   RedrawSequence();
-  RedrawUI();
+  //RedrawUI();
 }
 
 void SetupButtons()
@@ -144,12 +144,30 @@ void loop() {
   //int note = map(analogRead(0), 0, 1023, 0, 127);
   //int velocity = map(analogRead(3), 0, 1023, 0, 127);
 
+    bool buttonState = digitalRead(buttonPins[1]);
+    
+    lcd.setCursor(0, 0);
+    lcd.print("1");
+    lcd.setCursor(0, 1);
+    lcd.print((String)buttonState);
+
+    buttonState = digitalRead(buttonPins[10]);
+    
+    lcd.setCursor(10, 0);
+    lcd.print("10");
+    lcd.setCursor(10, 1);
+    lcd.print((String)buttonState);
+    //delay(300);
+    digitalWrite(buttonPins[1], HIGH);
+    digitalWrite(buttonPins[10], HIGH);
+    return;
+
   dirtySequenceFlag = false;
   currentMillis = millis();
   differenceTiming = currentMillis - previousMillis;
   if (differenceTiming >= sixteenInterval)
   {
-    PerformMidiCheck();
+    //PerformMidiCheck();
 
     lcd.home();
 
@@ -228,17 +246,30 @@ void EndMidiNote(byte pitch)
 
 void EvaluateSequenceButtons()
 {
+  lcd.clear();
+  
   for (int i = 0; i < 16; i++)
   {
     bool buttonState = digitalRead(buttonPins[i]);
+    
+    lcd.setCursor(0, 0);
+    lcd.print((String)i);
+    lcd.setCursor(0, 1);
+    lcd.print((String)buttonState);
+    delay(300);
 
+    
     if (!buttonState)
     {
-
-      dirtySequenceFlag = true;
-      buttonTimerReset = 300;
-      //SetMidiStartPoint(i);
+      //lcd.setCursor(0, 0);
+      //lcd.print((String) i);
+      ///elay(500);
       
+      dirtySequenceFlag = true;
+      buttonTimerReset = 500;
+      //SetMidiStartPoint(i);
+
+      /*
       if (PatternsContainer.Patterns[currentPattern].Sequences[currentSequence].MusicNotes[i].Play == true)
       {
         ClearMidiSequences(i);
@@ -247,8 +278,9 @@ void EvaluateSequenceButtons()
       {
         SetMidiStartPoint(i);
         int endPoint = SetMidiEndPoint(i);
-      }
+      }*/
     }
+    
     digitalWrite(buttonPins[i], HIGH);
   }
 }
